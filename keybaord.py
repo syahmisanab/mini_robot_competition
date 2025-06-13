@@ -1,3 +1,6 @@
+#sudo pip3 install keyboard --break-system-packages
+
+
 import time
 import keyboard  # For capturing arrow key events
 from motor_driver import MotorDriver  # Make sure motor_driver.py is in the same folder
