@@ -131,4 +131,27 @@ def move_distance_cm(cm, direction='forward', speed=300):
             time.sleep(0.01)
     finally:
         stop()
-        print("Movement comp
+        print("Movement complete.\n")
+
+def move_forward(cm):
+    move_distance_cm(cm, direction='forward')
+
+def move_backward(cm):
+    move_distance_cm(cm, direction='backward')
+
+
+# =========================
+# 🧪 Test (optional)
+# =========================
+
+if __name__ == "__main__":
+    calibrate_gyro()
+    move_forward(30)
+    time.sleep(1)
+    robot_rotate_right(90)
+    time.sleep(1)
+    move_forward(30)
+    time.sleep(1)
+    robot_rotate_left(90)
+    time.sleep(1)
+    move_backward(30)
