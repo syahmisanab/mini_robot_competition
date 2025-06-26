@@ -9,7 +9,7 @@ import time
 md = MotorDriver(port="/dev/ttyUSB0", motor_type=2, upload_data=1)
 sensor = mpu6050(0x68)
 
-# Encoder constants (based on your test)
+# Encoder constants (based on testing)
 CM_PER_TICK = 0.01363
 TICKS_PER_CM = 1 / CM_PER_TICK
 
@@ -26,9 +26,18 @@ def stop():
 def get_encoder_counts():
     msg = md.receive_data()
     if msg:
-        parsed = md.parse_data(msg)
-        if parsed:
-            return [parsed['M1'], parsed['M2'], parsed['M3'], parsed['M4']]
+        raw = md.parse_data(msg)
+        if raw:
+            try:
+                # Parse "M1:204 M2:150 M3:2476 M4:2401"
+                parts = raw.replace(',', '').split()
+                encoders = {}
+                for part in parts:
+                    motor, value = part.split(':')
+                    encoders[motor.strip()] = int(value.strip())
+                return [encoders['M1'], encoders['M2'], encoders['M3'], encoders['M4']]
+            except:
+                pass
     return None
 
 
@@ -92,7 +101,7 @@ def robot_rotate_left(logical_angle):
 
 
 # =========================
-# 📏 Encoders: Straight Movement
+# 📏 Encoders: Movement
 # =========================
 
 def move_distance_cm(cm, direction='forward', speed=300):
@@ -122,27 +131,4 @@ def move_distance_cm(cm, direction='forward', speed=300):
             time.sleep(0.01)
     finally:
         stop()
-        print("Movement complete.\n")
-
-def move_forward(cm):
-    move_distance_cm(cm, direction='forward')
-
-def move_backward(cm):
-    move_distance_cm(cm, direction='backward')
-
-
-# =========================
-# 🧪 Test (optional)
-# =========================
-
-if __name__ == "__main__":
-    calibrate_gyro()
-    move_forward(30)
-    time.sleep(1)
-    robot_rotate_right(90)
-    time.sleep(1)
-    move_forward(30)
-    time.sleep(1)
-    robot_rotate_left(90)
-    time.sleep(1)
-    move_backward(30)
+        print("Movement comp
