@@ -105,7 +105,7 @@ def robot_rotate_left(logical_angle):
 
 
 # =========================
-# 📏 Encoders: Movement with Gyro Correction
+# 📏 Movement: Forward/Backward with Gyro Correction
 # =========================
 
 def move_distance_cm(cm, direction='forward', speed=200):
@@ -118,9 +118,7 @@ def move_distance_cm(cm, direction='forward', speed=200):
         time.sleep(0.01)
 
     base_speed = -speed if direction == 'forward' else speed
-
-    # Proportional gain for gyro correction
-    Kp = 15
+    Kp = 15  # Gyro correction gain
 
     try:
         while True:
@@ -144,7 +142,6 @@ def move_distance_cm(cm, direction='forward', speed=200):
             right_speed = base_speed - correction
 
             md.control_speed(left_speed, left_speed, right_speed, right_speed)
-
             time.sleep(0.01)
     finally:
         stop()
@@ -158,22 +155,88 @@ def move_backward(cm, speed=200):
 
 
 # =========================
+# 📐 Movement: Left/Right (Strafe) with Gyro Correction
+# =========================
+
+def move_strafe_cm(cm, direction='right', speed=200):
+    ticks_needed = cm * TICKS_PER_CM
+    print(f"Strafing {direction} {cm:.2f} cm (~{ticks_needed:.0f} ticks)")
+
+    start = None
+    while start is None:
+        start = get_encoder_counts()
+        time.sleep(0.01)
+
+    if direction == 'right':
+        m1, m2, m3, m4 = speed, -speed, -speed, speed
+    elif direction == 'left':
+        m1, m2, m3, m4 = -speed, speed, speed, -speed
+    else:
+        raise ValueError("Direction must be 'left' or 'right'.")
+
+    Kp = 15  # Gyro correction gain
+
+    try:
+        while True:
+            current = get_encoder_counts()
+            if current is None:
+                continue
+
+            deltas = [abs(current[i] - start[i]) for i in range(4)]
+            avg_ticks = sum(deltas) / 4
+            distance_moved = avg_ticks * CM_PER_TICK
+            print(f"Moved: {distance_moved:.2f} cm")
+
+            if avg_ticks >= ticks_needed:
+                break
+
+            # Gyro correction
+            gyro_z = sensor.get_gyro_data()['z'] - gyro_z_bias
+            correction = int(Kp * gyro_z)
+
+            md.control_speed(
+                m1 + correction,
+                m2 + correction,
+                m3 - correction,
+                m4 - correction
+            )
+            time.sleep(0.01)
+    finally:
+        stop()
+        print("Strafe complete.\n")
+
+def move_left(cm, speed=200):
+    move_strafe_cm(cm, direction='left', speed=speed)
+
+def move_right(cm, speed=200):
+    move_strafe_cm(cm, direction='right', speed=speed)
+
+
+# =========================
 # 🧪 Test (optional)
 # =========================
 
 if __name__ == "__main__":
     calibrate_gyro()
-    
+
     time.sleep(1)
     stop()
-    
+
     robot_rotate_left(90)
     stop()
-    
-    time.sleep(0.5)  # Let it settle
+
+    time.sleep(0.5)
     move_forward(30)
     stop()
-    
-    time.sleep(1)
+
+    time.sleep(0.5)
+    move_left(20)
+    stop()
+
+    time.sleep(0.5)
+    move_right(20)
+    stop()
+
+    time.sleep(0.5)
     move_backward(30)
     stop()
