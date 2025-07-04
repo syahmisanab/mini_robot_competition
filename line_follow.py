@@ -1,53 +1,88 @@
+#!/usr/bin/env python3
 import smbus
 import time
 from motor_driver import MotorDriver
 
-# ——— I²C and MotorDriver setup ———
-I2C_BUS    = 1
-I2C_ADDR   = 0x12      # 8-ch line sensor I²C address
-I2C_DATA   = 0x30      # register holding 8 bits of “black/white” data
+# —— CONFIG —————————————————————————————————————————————
+I2C_BUS     = 1
+I2C_ADDR    = 0x12       # your sensor’s I²C address
+I2C_REG     = 0x30       # the register with 8‐bit mask
 
+# MotorDriver setup
+MD_PORT     = "/dev/ttyUSB0"
+MD_TYPE     = 2
+UPLOAD_DATA = 1          # keep or drop your telemetry?
+
+# Control gains & speeds
+BASE_SPEED  = 350        # try 200–500
+KP          = 40         # tune between ~10–100
+MAX_CMD     = 600        # clamp your commands here
+
+# If “forward” on your car was actually backwards,
+# set this to -1, otherwise +1.
+FORWARD_SIGN = -1        
+
+# Weights for sensors 1…8 (left…right):
+WEIGHTS = [-3.5, -2.5, -1.5, -0.5, +0.5, +1.5, +2.5, +3.5]
+# ————————————————————————————————————————————————————————
+
+# init I2C + motors
 bus = smbus.SMBus(I2C_BUS)
-md  = MotorDriver(port="/dev/ttyUSB0", motor_type=2, upload_data=1)
+md  = MotorDriver(port=MD_PORT, motor_type=MD_TYPE, upload_data=UPLOAD_DATA)
 
-# ——— Helpers ———
 def read_sensors():
-    """Read one byte from the sensor and return list of 8 bits [x1…x8]."""
-    raw = bus.read_byte_data(I2C_ADDR, I2C_DATA)
-    return [(raw >> i) & 0x01 for i in range(8)]
+    """Read one byte; return bits[0]…bits[7] as integers 0/1."""
+    while True:
+        try:
+            raw = bus.read_byte_data(I2C_ADDR, I2C_REG)
+            bits = [(raw >> i) & 1 for i in range(8)]
+            # debug: uncomment if you want to watch the stream
+            # print(f"RAW=0x{raw:02X}  BITS={bits}")
+            return bits
+        except BlockingIOError:
+            # bus busy—short pause then retry
+            time.sleep(0.005)
 
 def compute_error(bits):
-    """
-    Weighted-sum error: sensors 1…8 get weights -3.5, -2.5, -1.5, -0.5, +0.5, +1.5, +2.5, +3.5
-    so “centered” line → error ≈ 0.
-    """
-    weights = [-3.5, -2.5, -1.5, -0.5, +0.5, +1.5, +2.5, +3.5]
-    return sum(w * b for w, b in zip(weights, bits))
+    """Compute a signed error: negative=left of center, positive=right."""
+    return sum(w * b for w, b in zip(WEIGHTS, bits))
 
-# ——— Line-following loop ———
-def follow_line(base_speed=400, kP=50):
-    """
-    base_speed: your straight-ahead motor command
-    kP: proportional gain (tune up/down for more or less sensitivity)
-    """
+def clamp(val, lo, hi):
+    return max(min(val, hi), lo)
+
+def follow_line():
+    print("Starting line-follow. Ctrl-C to stop.")
     try:
         while True:
             bits  = read_sensors()
-            error = compute_error(bits)
-            turn  = kP * error
+            s     = sum(bits)
+            
+            # if you lose the line (no bits or all bits), just coast
+            if s == 0 or s == 8:
+                md.control_speed(0,0,0,0)
+                # you could add a small search pattern here
+                continue
 
-            # Left vs. right motor speeds
-            left_speed  = max(min(base_speed + turn,  600), -600)
-            right_speed = max(min(base_speed - turn, 600), -600)
+            err   = compute_error(bits)
+            turn  = KP * err
 
-            # Motors: (FR, BR, FL, BL)
-            md.control_speed(right_speed, right_speed,
-                             left_speed,  left_speed)
+            # calculate left & right wheel speeds
+            left_cmd  = clamp(BASE_SPEED + turn, -MAX_CMD, MAX_CMD)
+            right_cmd = clamp(BASE_SPEED - turn, -MAX_CMD, MAX_CMD)
+
+            # apply forward flip if needed
+            md.control_speed(
+                FORWARD_SIGN * right_cmd,
+                FORWARD_SIGN * right_cmd,
+                FORWARD_SIGN * left_cmd,
+                FORWARD_SIGN * left_cmd
+            )
 
             time.sleep(0.05)
+
     except KeyboardInterrupt:
+        print("\nStopping motors.")
         md.control_speed(0,0,0,0)
-        print("Line follower stopped.")
 
 if __name__ == "__main__":
     follow_line()
