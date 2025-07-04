@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Line follower adjusted to prevent stalling and smoothing derivative term.
-Changes:
- - Reintroduced loop delay for stable dt (10 ms)
- - Clamped derivative to avoid huge swings
- - Reduced KD and KP for smoother response
- - Softened WEIGHTS for balanced turning
- - Retained inside-wheel braking for extra aggressiveness
+Refined line follower for Yahboom Mini Car:
+ - Simplified to pure P-control for stability
+ - Adjusted sensor weights for balanced aggressiveness
+ - Increased proportional gain
+ - Removed derivative term to eliminate oscillations
+ - Inside-wheel braking retained at moderate level
+ - Loop delay reintroduced for consistent timing
 """
 
 import smbus
@@ -14,26 +14,27 @@ import time
 from motor_driver import MotorDriver
 
 # —— CONFIG —————————————————————————————————————————————
-I2C_BUS        = 1
-I2C_ADDR       = 0x12
-SENSOR_REG     = 0x30
-SENSOR_EN_REG  = 0x01
+I2C_BUS       = 1
+I2C_ADDR      = 0x12       # sensor I²C address
+SENSOR_REG    = 0x30       # register for 8-bit mask
+SENSOR_EN_REG = 0x01       # IR enable register
 
-MD_PORT        = "/dev/ttyUSB0"
-MD_TYPE        = 2
-UPLOAD_DATA    = 0
+MD_PORT       = "/dev/ttyUSB0"
+MD_TYPE       = 2
+UPLOAD_DATA   = 0          # telemetry off
 
-BASE_SPEED     = 300        # forward speed
-KP             = 50         # proportional gain
-KD             = 2.0        # derivative gain
-MAX_CMD        = 600
-FORWARD_SIGN   = -1         # invert if needed
+BASE_SPEED    = 300        # forward speed (200–400)
+KP            = 80         # increased proportional gain
+MAX_CMD       = 600        # clamp limit for commands
+FORWARD_SIGN  = -1         # invert if needed (set to +1 if reversed)
 
-# Softened weights
-WEIGHTS        = [-7.0, -5.0, -3.0, -1.0, +1.0, +3.0, +5.0, +7.0]
-BRAKE_FACTOR   = 0.5        # inside brake
-LOOP_DELAY     = 0.01       # 10 ms loop delay for stable dt
-DERR_MAX       = 50.0       # clamp derivative error
+# Balanced weights for sensors 1…8 (leftmost→rightmost)
+WEIGHTS       = [-6.0, -5.0, -3.0, -1.0, +1.0, +3.0, +5.0, +6.0]
+# Moderate inside-wheel braking for sharper corners
+BRAKE_FACTOR  = 0.5
+
+# Loop timing
+LOOP_DELAY    = 0.02       # 20 ms for stable control (50 Hz)
 # ————————————————————————————————————————————————————————
 
 # Initialize I²C and sensor
@@ -52,6 +53,7 @@ def clamp(val, lo, hi):
 
 
 def read_sensors():
+    """Read raw, return (raw, bits[0..7]) inverted so black=1."""
     while True:
         try:
             raw = bus.read_byte_data(I2C_ADDR, SENSOR_REG)
@@ -62,61 +64,57 @@ def read_sensors():
 
 
 def compute_error(bits):
+    """Compute weighted sum of sensor bits."""
     return sum(w * b for w, b in zip(WEIGHTS, bits))
 
 
 def spin_test():
+    """Quick spin to verify motor orientation."""
     print("Spin test: forward then reverse...")
     md.control_speed(200, 200, 200, 200)
     time.sleep(0.5)
     md.control_speed(-200, -200, -200, -200)
     time.sleep(0.5)
     md.control_speed(0, 0, 0, 0)
-    print("Spin test done.\n")
+    print("Spin test complete.\n")
 
 
 def follow_line():
-    print(f"Starting line follow. KP={KP}, KD={KD}, WEIGHTS={WEIGHTS}\n")
+    """Main loop: pure P-control with command caching."""
+    print(f"Starting refined line follow. KP={KP}, WEIGHTS={WEIGHTS}\n")
     last_cmd = (None, None)
-    last_err = 0.0
-    last_time = time.perf_counter()
 
     try:
         while True:
-            now = time.perf_counter()
-            dt = now - last_time
-            last_time = now
-
             raw, bits = read_sensors()
             total = sum(bits)
 
             if total == 0:
-                target_l = target_r = 0
+                # lost line: stop or hold last direction
+                target_l = 0
+                target_r = 0
                 err = 0.0
-                d_err = 0.0
             else:
                 err = compute_error(bits)
-                d_err = (err - last_err) / dt if dt > 1e-6 else 0.0
-                # clamp derivative
-                d_err = clamp(d_err, -DERR_MAX, DERR_MAX)
-                last_err = err
-
-                # PD term
-                turn = KP * err + KD * d_err
+                # P turn term
+                turn = KP * err
                 base = BASE_SPEED
 
-                # compute raw commands
+                # initial commands
                 target_l = clamp(base + turn, -MAX_CMD, MAX_CMD)
                 target_r = clamp(base - turn, -MAX_CMD, MAX_CMD)
 
                 # inside-wheel braking
                 if turn > 0:
+                    # turning right: reduce right wheel
                     target_r = clamp(target_r - BRAKE_FACTOR * abs(turn), -MAX_CMD, MAX_CMD)
                 elif turn < 0:
+                    # turning left: reduce left wheel
                     target_l = clamp(target_l - BRAKE_FACTOR * abs(turn), -MAX_CMD, MAX_CMD)
 
+            # send only on change
             if (target_l, target_r) != last_cmd:
-                print(f"RAW=0x{raw:02X} BITS={bits} ERR={err:.2f} dERR={d_err:.2f} -> L={target_l:.0f} R={target_r:.0f}")
+                print(f"RAW=0x{raw:02X} BITS={bits} ERR={err:.2f} -> L={target_l:.0f} R={target_r:.0f}")
                 md.control_speed(
                     FORWARD_SIGN * target_r,
                     FORWARD_SIGN * target_r,
