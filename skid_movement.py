@@ -10,7 +10,7 @@ BAUDRATE          = 115200
 TIMEOUT           = 1
 
 # Speeds: inverted wiring means negative=forward, positive=backward
-TURN_SPEED        = 200             # speed for in-place turns (magnitude)
+TURN_SPEED        = 200             # speed for in-place turns
 FORWARD_SPEED     = -200            # negative value drives forward
 BACKWARD_SPEED    = 200             # positive value drives backward
 BRAKE_SPEED       = 50              # small thrust to brake wheels
@@ -26,18 +26,19 @@ STATE_TURN  = 2
 STATE_IDLE  = 3
 
 # Movement commands
-CMD_FORWARD  = 'forward'
-CMD_BACKWARD = 'backward'
-CMD_LEFT     = 'left'
-CMD_RIGHT    = 'right'
-CMD_STOP     = 'stop'
-CMD_QUIT     = 'quit'
+CMD_FORWARD   = 'forward'
+CMD_BACKWARD  = 'backward'
+CMD_LEFT      = 'left'
+CMD_RIGHT     = 'right'
+CMD_STOP      = 'stop'
+CMD_QUIT      = 'quit'
 
 # --- Globals ---
-state      = STATE_IDLE
-move_cmd   = CMD_STOP
-last_cmd   = None
-brake_start= None
+state        = STATE_IDLE
+move_cmd     = CMD_STOP
+move_angle   = None
+last_cmd     = None
+brake_start  = None
 
 def normalize_angle(angle):
     """Wrap angle into [-180, 180] degrees"""
@@ -81,24 +82,30 @@ def receive_data():
 
 # --- Input Thread for Commands ---
 def input_thread():
-    global move_cmd
-    print("Commands: forward, backward, left, right, stop, quit")
+    global move_cmd, move_angle
+    print("Commands: forward, backward, left [angle], right [angle], stop, quit")
     while True:
-        cmd = input("Enter command: ").strip().lower()
+        parts = input("Enter command: ").strip().lower().split()
+        if not parts:
+            continue
+        cmd = parts[0]
         if cmd == CMD_QUIT:
             move_cmd = CMD_QUIT
             break
-        if cmd in {CMD_FORWARD, CMD_BACKWARD, CMD_LEFT, CMD_RIGHT, CMD_STOP}:
+        if cmd in (CMD_LEFT, CMD_RIGHT) and len(parts) == 2 and parts[1].isdigit():
             move_cmd = cmd
+            move_angle = float(parts[1])
+        elif cmd in (CMD_FORWARD, CMD_BACKWARD, CMD_STOP) and len(parts) == 1:
+            move_cmd = cmd
+            move_angle = None
         else:
-            print("Unknown command.")
+            print("Unknown or malformed command.")
 
 t = threading.Thread(target=input_thread, daemon=True)
 t.start()
 
 # Main control loop
 target_yaw = 0
-
 print("Starting control loop...")
 try:
     while True:
@@ -112,45 +119,50 @@ try:
             # begin braking before any direction change
             state = STATE_BRAKE
             brake_start = time.time()
-            # capture heading for forward/backward
-            if move_cmd in {CMD_FORWARD, CMD_BACKWARD}:
+            # set target yaw for forward/backward or turn
+            if move_cmd in (CMD_FORWARD, CMD_BACKWARD):
                 target_yaw = current_yaw
+            elif move_cmd == CMD_LEFT and move_angle is not None:
+                target_yaw = normalize_angle(current_yaw - move_angle)
+            elif move_cmd == CMD_RIGHT and move_angle is not None:
+                target_yaw = normalize_angle(current_yaw + move_angle)
 
         # state machine
         if state == STATE_BRAKE:
             # apply small brake thrust
             control_speed(BRAKE_SPEED, BRAKE_SPEED, BRAKE_SPEED, BRAKE_SPEED)
             if time.time() - brake_start >= BRAKE_DURATION:
-                # transition depending on cmd
-                if move_cmd in {CMD_FORWARD, CMD_BACKWARD}:
+                if move_cmd in (CMD_FORWARD, CMD_BACKWARD):
                     state = STATE_MOVE
-                elif move_cmd in {CMD_LEFT, CMD_RIGHT}:
+                elif move_cmd in (CMD_LEFT, CMD_RIGHT):
                     state = STATE_TURN
                 else:
                     state = STATE_IDLE
 
         elif state == STATE_MOVE:
-            # P-loop heading hold
+            base = FORWARD_SPEED if move_cmd == CMD_FORWARD else BACKWARD_SPEED
+            # heading hold
             error = normalize_angle(current_yaw - target_yaw)
             correction = KP * error
-            base = FORWARD_SPEED if move_cmd == CMD_FORWARD else BACKWARD_SPEED
             left_cmd  = int(base - correction)
             right_cmd = int(base + correction)
             control_speed(left_cmd, right_cmd, left_cmd, right_cmd)
 
         elif state == STATE_TURN:
-            if move_cmd == CMD_LEFT:
-                # in-place left: left wheels backward, right wheels forward
-                control_speed(-TURN_SPEED, TURN_SPEED, -TURN_SPEED, TURN_SPEED)
+            # turn towards target yaw
+            error = normalize_angle(current_yaw - target_yaw)
+            if abs(error) <= ANGLE_TOL:
+                state = STATE_IDLE
             else:
-                # in-place right: left wheels forward, right wheels backward
-                control_speed(TURN_SPEED, -TURN_SPEED, TURN_SPEED, -TURN_SPEED)
+                if move_cmd == CMD_LEFT:
+                    control_speed(TURN_SPEED, -TURN_SPEED, TURN_SPEED, -TURN_SPEED)
+                else:  # CMD_RIGHT
+                    control_speed(-TURN_SPEED, TURN_SPEED, -TURN_SPEED, TURN_SPEED)
 
         else:  # STATE_IDLE
-            # stop all wheels
             control_speed(0, 0, 0, 0)
 
-        # optional: read back encoder data for logging
+        # optional: read back encoder data
         msg = receive_data()
         if msg:
             print("Encoders:", msg)
