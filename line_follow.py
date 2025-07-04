@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Enhanced line follower tuned to avoid stalling.
-Dynamic features have been softened:
- - Speed scaling disabled (MIN_SPEED_FACT = 1.0)
- - Inside-wheel braking turned off (BRAKE_FACTOR = 0)
- - Dual KP simplified back to single KP
- - Reduced derivative gain
+Line follower adjusted to prevent stalling and smoothing derivative term.
+Changes:
+ - Reintroduced loop delay for stable dt (10 ms)
+ - Clamped derivative to avoid huge swings
+ - Reduced KD and KP for smoother response
+ - Softened WEIGHTS for balanced turning
+ - Retained inside-wheel braking for extra aggressiveness
 """
 
 import smbus
@@ -14,26 +15,25 @@ from motor_driver import MotorDriver
 
 # —— CONFIG —————————————————————————————————————————————
 I2C_BUS        = 1
-I2C_ADDR       = 0x12       # sensor I²C address
-SENSOR_REG     = 0x30       # data register (8-bit mask)
+I2C_ADDR       = 0x12
+SENSOR_REG     = 0x30
 SENSOR_EN_REG  = 0x01
 
 MD_PORT        = "/dev/ttyUSB0"
 MD_TYPE        = 2
-UPLOAD_DATA    = 0          # telemetry off
+UPLOAD_DATA    = 0
 
-BASE_SPEED     = 350        # constant forward speed
-KP             = 70         # proportional gain
-KD             = 5.0        # reduced derivative gain
+BASE_SPEED     = 300        # forward speed
+KP             = 50         # proportional gain
+KD             = 2.0        # derivative gain
 MAX_CMD        = 600
 FORWARD_SIGN   = -1         # invert if needed
 
-# Harsh turn weights (can be softened if desired)
-WEIGHTS        = [-9.0, -7.0, -4.0, -2.0, +2.0, +4.0, +7.0, +9.0]
-
-# Disable speed scaling and inside braking to prevent stalling
-MIN_SPEED_FACT = 1.0        # always full BASE_SPEED
-BRAKE_FACTOR   = 0.0        # no inside-wheel braking
+# Softened weights
+WEIGHTS        = [-7.0, -5.0, -3.0, -1.0, +1.0, +3.0, +5.0, +7.0]
+BRAKE_FACTOR   = 0.5        # inside brake
+LOOP_DELAY     = 0.01       # 10 ms loop delay for stable dt
+DERR_MAX       = 50.0       # clamp derivative error
 # ————————————————————————————————————————————————————————
 
 # Initialize I²C and sensor
@@ -52,7 +52,6 @@ def clamp(val, lo, hi):
 
 
 def read_sensors():
-    """Return raw, bits[0..7] inverted so black=1."""
     while True:
         try:
             raw = bus.read_byte_data(I2C_ADDR, SENSOR_REG)
@@ -77,7 +76,7 @@ def spin_test():
 
 
 def follow_line():
-    print(f"Starting line follow with KP={KP}, KD={KD}, scale={MIN_SPEED_FACT}, brake={BRAKE_FACTOR}")
+    print(f"Starting line follow. KP={KP}, KD={KD}, WEIGHTS={WEIGHTS}\n")
     last_cmd = (None, None)
     last_err = 0.0
     last_time = time.perf_counter()
@@ -85,7 +84,7 @@ def follow_line():
     try:
         while True:
             now = time.perf_counter()
-            dt = now - last_time if last_time else 0.01
+            dt = now - last_time
             last_time = now
 
             raw, bits = read_sensors()
@@ -98,23 +97,23 @@ def follow_line():
             else:
                 err = compute_error(bits)
                 d_err = (err - last_err) / dt if dt > 1e-6 else 0.0
+                # clamp derivative
+                d_err = clamp(d_err, -DERR_MAX, DERR_MAX)
                 last_err = err
 
-                # constant forward speed
-                base = BASE_SPEED * MIN_SPEED_FACT
-                # PD turn term
+                # PD term
                 turn = KP * err + KD * d_err
+                base = BASE_SPEED
 
                 # compute raw commands
                 target_l = clamp(base + turn, -MAX_CMD, MAX_CMD)
                 target_r = clamp(base - turn, -MAX_CMD, MAX_CMD)
 
-                # inside braking disabled (BRAKE_FACTOR=0)
-                # if needed, uncomment below:
-                # if turn > 0:
-                #     target_r = clamp(target_r - BRAKE_FACTOR*turn, -MAX_CMD, MAX_CMD)
-                # elif turn < 0:
-                #     target_l = clamp(target_l + BRAKE_FACTOR*turn, -MAX_CMD, MAX_CMD)
+                # inside-wheel braking
+                if turn > 0:
+                    target_r = clamp(target_r - BRAKE_FACTOR * abs(turn), -MAX_CMD, MAX_CMD)
+                elif turn < 0:
+                    target_l = clamp(target_l - BRAKE_FACTOR * abs(turn), -MAX_CMD, MAX_CMD)
 
             if (target_l, target_r) != last_cmd:
                 print(f"RAW=0x{raw:02X} BITS={bits} ERR={err:.2f} dERR={d_err:.2f} -> L={target_l:.0f} R={target_r:.0f}")
@@ -125,6 +124,8 @@ def follow_line():
                     FORWARD_SIGN * target_l
                 )
                 last_cmd = (target_l, target_r)
+
+            time.sleep(LOOP_DELAY)
 
     except KeyboardInterrupt:
         print("\nStopping motors.")
