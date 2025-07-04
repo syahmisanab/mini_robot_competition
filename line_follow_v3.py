@@ -2,6 +2,7 @@
 """
 4WD Line follower with PID control, deadband, curve-speed reduction,
 and robust lost-line recovery (pivot + nudge), using monotonic timing.
+Tuned for higher speed and snappier response.
 """
 import smbus
 import time
@@ -18,38 +19,41 @@ MD_PORT        = "/dev/ttyUSB0"
 MD_TYPE        = 2
 UPLOAD_DATA    = 0
 
-BASE_SPEED     = 300        # ★ adjust for overall forward speed
+BASE_SPEED     = 450        # ★ overall forward speed (increased)
 KP             = 70.0       # ★ proportional gain
 KI             = 5.0        # ★ integral gain
 KD             = 20.0       # ★ derivative gain
 MAX_CMD        = 600        # absolute clamp on speed commands
-MIN_CMD        = 200        # ★ break-away minimum to overcome static friction
+MIN_CMD        = 120        # ★ break-away minimum (lowered)
+
 FORWARD_SIGN   = -1         # +1 if positive cmd drives forward
 
-# sensor weights (must reflect true spacing; see notes below)
+# sensor weights (reflecting physical spacing; unchanged)
 WEIGHTS        = [-5.0, -3.6, -2.1, -0.7, 0.7, 2.1, 3.6, 5.0]
 MAX_ERR        = max(abs(w) for w in WEIGHTS)
 
-BRAKE_FACTOR   = 0.7        # ★ 0–1 inside-wheel braking fraction
-DEAD_BAND      = 0.2        # ★ errors smaller than this are treated as zero
+BRAKE_FACTOR   = 0.4        # ★ inside-wheel braking fraction (reduced)
+DEAD_BAND      = 0.2        # ★ ignore tiny errors
 
 # recovery parameters (pivot + nudge)
-PIVOT_TIMEOUT  = 0.2        # ★ sec to pivot before nudge
-NUDGE_TIME     = 0.1        # ★ sec to nudge forward
-PIVOT_SPEED    = 200        # pivot wheel speed
+PIVOT_TIMEOUT  = 0.2        # sec to pivot before nudge
+NUDGE_TIME     = 0.1        # sec to nudge forward
+PIVOT_SPEED    = 450        # ★ pivot wheel speed (increased)
 
 # loop timing
-LOOP_DELAY     = 0.02       # desired sec per loop
+LOOP_DELAY     = 0.01       # ★ desired sec per loop (100 Hz)
 ERR_SUM_MAX    = 200.0      # integral-windup clamp
 
 # ——— END CONFIG ———
 
+# initialize I²C line sensor
 bus = smbus.SMBus(I2C_BUS)
 bus.write_byte_data(I2C_ADDR, SENSOR_EN_REG, 1)
 time.sleep(0.02)
 bus.write_byte_data(I2C_ADDR, SENSOR_EN_REG, 0)
 time.sleep(0.02)
 
+# initialize motor driver
 md = MotorDriver(port=MD_PORT, motor_type=MD_TYPE, upload_data=UPLOAD_DATA)
 FOLLOW, SEARCH, NUDGE = range(3)
 
@@ -117,24 +121,20 @@ def follow_line():
                 err = compute_error(bits)
                 if abs(err) < DEAD_BAND:
                     err = 0.0
-                # integral
+
                 err_sum = clamp(err_sum + err * dt, -ERR_SUM_MAX, ERR_SUM_MAX)
-                # derivative
                 d_err = (err - last_err) / dt if dt > 0 else 0.0
                 last_err = err
 
-                # combined turn command
                 turn = KP*err + KI*err_sum + KD*d_err
 
-                # slow down in sharp curves
+                # curve-speed reduction (scaled down less aggressively)
                 reduction = clamp(abs(err) / MAX_ERR, 0.0, 1.0)
-                speed = BASE_SPEED * (1 - 0.5 * reduction)
+                speed = BASE_SPEED * (1 - 0.2 * reduction)
 
-                # wheel cmds before braking
                 left_cmd  = speed + turn
                 right_cmd = speed - turn
 
-                # inside-wheel braking for sharper turns
                 if turn > 0:
                     right_cmd = clamp(right_cmd - BRAKE_FACTOR*abs(turn), -MAX_CMD, MAX_CMD)
                 elif turn < 0:
@@ -144,7 +144,6 @@ def follow_line():
                 if total > 0:
                     state = FOLLOW
                     continue
-                # pivot toward last seen direction
                 if now - state_time < PIVOT_TIMEOUT:
                     left_cmd  = -search_dir * PIVOT_SPEED
                     right_cmd =  search_dir * PIVOT_SPEED
@@ -161,7 +160,6 @@ def follow_line():
                     left_cmd  = BASE_SPEED
                     right_cmd = BASE_SPEED
                 else:
-                    # flip pivot side next time
                     state = SEARCH
                     state_time = now
                     search_dir *= -1
@@ -171,7 +169,6 @@ def follow_line():
             left_cmd  = apply_deadband(clamp(left_cmd,  -MAX_CMD, MAX_CMD))
             right_cmd = apply_deadband(clamp(right_cmd, -MAX_CMD, MAX_CMD))
 
-            # only send if changed
             cmd = (left_cmd, right_cmd)
             if cmd != last_cmd:
                 print(f"RAW=0x{raw:02X} BITS={bits} STATE={state} → L={left_cmd:.0f} R={right_cmd:.0f}")
@@ -188,7 +185,7 @@ def follow_line():
 
     except KeyboardInterrupt:
         print("\nStopping motors & cleanup.")
-        md.control_speed(0,0,0,0)
+        md.control_speed(0, 0, 0, 0)
         bus.write_byte_data(I2C_ADDR, SENSOR_EN_REG, 0)
         bus.close()
 
