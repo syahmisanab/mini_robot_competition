@@ -103,26 +103,22 @@ def follow_line():
                 time.sleep(0.05)  # Brief pause then continue
                 continue
 
-            # compute PID terms
+            # EXTREME skid-steer control for heavy robot
             err = compute_error(bits)
             
-            # Very aggressive turning for skid-steer
-            turn = KP * err
-            
-            # Apply exponential scaling for larger errors (more aggressive on sharp turns)
-            if abs(err) > 2.0:
-                turn = turn * 1.5  # Extra boost for sharp turns
+            if err > 1.0:      # line is right, turn right HARD
+                left_cmd = 600
+                right_cmd = -200  # REVERSE right wheel
+            elif err < -1.0:   # line is left, turn left HARD  
+                left_cmd = -200  # REVERSE left wheel
+                right_cmd = 600
+            else:              # line is center, go straight
+                left_cmd = BASE_SPEED
+                right_cmd = BASE_SPEED
             
             last_err = err
 
-            # Simple differential steering - NO BRAKE FACTOR
-            left_cmd  = BASE_SPEED + turn
-            right_cmd = BASE_SPEED - turn
-
-            # apply deadband & clamp
-            left_cmd  = apply_deadband(clamp(left_cmd,  -MAX_CMD, MAX_CMD))
-            right_cmd = apply_deadband(clamp(right_cmd, -MAX_CMD, MAX_CMD))
-
+            # No need for deadband/clamp - using fixed values
             cmd = (left_cmd, right_cmd)
             if cmd != last_cmd:
                 print(f"RAW=0x{raw:02X} BITS={bits} ERR={err:.1f} TURN={turn:.1f} → L={left_cmd:.0f} R={right_cmd:.0f}")
