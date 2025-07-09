@@ -1,4 +1,7 @@
-#!/usr/bin/env python3
+BASE_SPEED     = 400        # ★ faster for heavy skid-steer
+KP             = 80.0       # ★ aggressive for heavy robot
+KI             = 0.0        # keep disabled for now
+KD             = 0.0        # ★ DISABLE derivative - it's unstable#!/usr/bin/env python3
 """
 SIMPLIFIED 4WD Line follower - focusing on what actually works
 Removed complex recovery logic, reduced gains, fixed brake factor
@@ -93,11 +96,11 @@ def follow_line():
             raw, bits = read_sensors()
             total = sum(bits)
 
-            # Simple lost line handling - just stop and wait
+            # Simple lost line handling - try to continue briefly
             if total == 0:
-                print("LINE LOST - STOPPING")
-                md.control_speed(0, 0, 0, 0)
-                time.sleep(0.1)
+                print("LINE LOST - CONTINUING BRIEFLY")
+                # Keep last command for a short time instead of stopping
+                time.sleep(0.05)  # Brief pause then continue
                 continue
 
             # compute PID terms
