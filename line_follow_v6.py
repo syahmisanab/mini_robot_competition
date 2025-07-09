@@ -106,8 +106,13 @@ def follow_line():
             # compute PID terms
             err = compute_error(bits)
             
-            # Skip derivative calculation - just use proportional
+            # Very aggressive turning for skid-steer
             turn = KP * err
+            
+            # Apply exponential scaling for larger errors (more aggressive on sharp turns)
+            if abs(err) > 2.0:
+                turn = turn * 1.5  # Extra boost for sharp turns
+            
             last_err = err
 
             # Simple differential steering - NO BRAKE FACTOR
