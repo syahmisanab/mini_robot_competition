@@ -18,10 +18,10 @@ MD_PORT        = "/dev/ttyUSB0"
 MD_TYPE        = 2
 UPLOAD_DATA    = 0
 
-BASE_SPEED     = 250        # ★ MUCH slower for stability
-KP             = 15.0       # ★ MUCH lower gain
+BASE_SPEED     = 350        # ★ faster but still manageable
+KP             = 8.0        # ★ very conservative gain
 KI             = 0.0        # keep disabled for now
-KD             = 5.0        # ★ small derivative for smoothing
+KD             = 0.0        # ★ DISABLE derivative - it's unstable
 MAX_CMD        = 400
 MIN_CMD        = 100        # ★ lower minimum
 
@@ -102,10 +102,10 @@ def follow_line():
 
             # compute PID terms
             err = compute_error(bits)
-            d_err = (err - last_err) / dt if dt > 0 else 0.0
+            
+            # Skip derivative calculation - just use proportional
+            turn = KP * err
             last_err = err
-
-            turn = KP * err + KD * d_err
 
             # Simple differential steering - NO BRAKE FACTOR
             left_cmd  = BASE_SPEED + turn
