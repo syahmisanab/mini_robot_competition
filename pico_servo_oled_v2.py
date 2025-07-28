@@ -1,110 +1,101 @@
-# main.py - 4 Servo control with OLED display
+# main.py – 4‑Servo control with OLED display, multi‑servo edition
+
 import sys
 import time
+import re
 from machine import Pin, SoftI2C, PWM
 import ssd1306
 
-# Initialize I2C and OLED
+# --- OLED setup ---
 i2c = SoftI2C(sda=Pin(4), scl=Pin(5))
 oled = ssd1306.SSD1306_I2C(128, 64, i2c)
 
-# Initialize 4 Servos on GP6, GP7, GP8, GP9
+# --- Servo class ---
 class Servo:
     def __init__(self, pin, min_us=500, max_us=2500):
         self.pwm = PWM(Pin(pin))
         self.pwm.freq(50)
         self.min_us = min_us
         self.max_us = max_us
-        self.current_angle = 90
 
     def write_angle(self, angle):
+        # clamp 0–180
         angle = max(0, min(180, angle))
-        # Map 0–180° ? min_us–max_us
-        pulse_us = self.min_us + (angle / 180) * (self.max_us - self.min_us)
-        duty = int((pulse_us / 20000) * 65535)
+        # map 0–180 → min_us–max_us
+        pulse = self.min_us + (angle/180)*(self.max_us - self.min_us)
+        duty = int((pulse/20000)*65535)
         self.pwm.duty_u16(duty)
-        self.current_angle = angle
 
-
-# Create 4 servos
+# --- Initialize 4 servos ---
 servos = [
-    Servo(6),  # Servo 1 on GP0
-    Servo(7),  # Servo 2 on GP1
-    Servo(8),  # Servo 3 on GP2
-    Servo(9)   # Servo 4 on GP3
+    Servo(6),  # GP0
+    Servo(7),  # GP1
+    Servo(8),  # GP2
+    Servo(9)   # GP3
 ]
 
-# Set all servos to 0 degrees at startup (rest position)
-for servo in servos:
-    servo.write_angle(0)
+# Center them at startup
+for s in servos:
+    s.write_angle(90)
 
-def display_message(title, message, line2="", line3=""):
-    """Display formatted message on OLED"""
+# --- OLED helper ---
+def display_message(line1, line2="", line3="", line4=""):
     oled.fill(0)
-    oled.text(title, 0, 0)
-    oled.text(message, 0, 10)
-    if line2:
-        oled.text(line2, 0, 20)
-    if line3:
-        oled.text(line3, 0, 30)
+    oled.text(line1, 0,  0)
+    oled.text(line2, 0, 10)
+    oled.text(line3, 0, 20)
+    oled.text(line4, 0, 30)
     oled.show()
 
-def parse_servo_command(command):
-    """Parse servo command: servo 1, 0 degree, 2 sec"""
-    try:
-        # Split by commas and clean up
-        parts = [part.strip() for part in command.split(',')]
-        
-        if len(parts) == 3:
-            # Extract servo number
-            servo_part = parts[0].replace('servo', '').strip()
-            servo_num = int(servo_part)
-            
-            # Extract angle
-            angle_part = parts[1].replace('degree', '').strip()
-            angle = int(angle_part)
-            
-            # Extract duration
-            duration_part = parts[2].replace('sec', '').strip()
-            duration = float(duration_part)
-            
-            return servo_num, angle, duration
-    except:
-        pass
-    return None, None, None
+# --- Parser ---
+def parse_servo_command(cmd):
+    """
+    Parses "servo 1&2, 180 degree, 2 sec"
+    Returns ( [1,2], 180, 2.0 ) or (None, None, None) on failure
+    """
+    parts = [p.strip() for p in cmd.lower().split(',')]
+    if len(parts) != 3 or not parts[0].startswith("servo"):
+        return None, None, None
 
-def handle_servo_command(servo_num, angle, duration):
-    """Handle servo movement command"""
-    # Validate servo number (1-4)
-    if not (1 <= servo_num <= 4):
-        return False, f"Invalid servo {servo_num}"
-    
-    # Validate angle (0-180)
+    # Extract servo IDs: split on &, comma, whitespace
+    ids_part = parts[0].replace("servo","").strip()
+    ids = [int(x) for x in re.split(r'[&,\s]+', ids_part) if x.isdigit()]
+
+    try:
+        angle = int(parts[1].replace("degree","").strip())
+        duration = float(parts[2].replace("sec","").strip())
+    except:
+        return None, None, None
+
+    return ids, angle, duration
+
+# --- Handler ---
+def handle_servo_command(servo_ids, angle, duration):
+    # Validate
+    if not servo_ids or any(not (1 <= i <= 4) for i in servo_ids):
+        return False, "Bad servo ID"
     if not (0 <= angle <= 180):
-        return False, f"Invalid angle {angle}"
-    
-    # Validate duration (>0)
+        return False, "Bad angle"
     if duration <= 0:
-        return False, f"Invalid duration {duration}"
-    
-    # Display servo action on OLED
-    display_message("Servo Command:", f"Servo {servo_num}", f"Angle: {angle}deg", f"Time: {duration}s")
-    
-    # Move servo (servo_num is 1-based, array is 0-based)
-    servos[servo_num - 1].write_angle(angle)
-    
-    # Wait for specified duration
-    start_time = time.time()
-    while time.time() - start_time < duration:
-        time.sleep(0.1)
-    
-    # Show completion
-    display_message("Servo Done:", f"Servo {servo_num}", f"Held {angle}deg", f"for {duration}s")
-    
+        return False, "Bad duration"
+
+    # Display action
+    display_message("Moving servos:", "&".join(map(str,servo_ids)),
+                    f"{angle}° for {duration}s")
+    # Move them
+    for i in servo_ids:
+        servos[i-1].write_angle(angle)
+
+    # Hold
+    time.sleep(duration)
+
+    # Done
+    display_message("Done:", "&".join(map(str,servo_ids)),
+                    f"{angle}° held", f"{duration}s")
     return True, "Success"
 
-# Initial display
-display_message("Pico Ready", "4 Servos", "GP0,1,2,3", "Waiting...")
+# --- Main loop ---
+display_message("PICO READY", "4 servos GP0–3", "Waiting for cmd")
 sys.stdout.write("PICO READY\n")
 
 while True:
@@ -112,27 +103,19 @@ while True:
     if not line:
         time.sleep(0.1)
         continue
-    
+
     line = line.strip()
-    
-    if line:
-        # Echo back for debugging
-        sys.stdout.write("GOT:" + line + "\n")
-        
-        # Parse servo command
-        servo_num, angle, duration = parse_servo_command(line)
-        
-        if servo_num is not None:
-            success, message = handle_servo_command(servo_num, angle, duration)
-            
-            if success:
-                sys.stdout.write("SERVO_ACK\n")
-            else:
-                display_message("Servo Error:", message, "Check params", "Try again...")
-                sys.stdout.write("SERVO_ERROR\n")
-        else:
-            # Unknown command
-            display_message("Unknown Cmd:", line[:12], "Format:", "servo 1,90,2")
-            sys.stdout.write("UNKNOWN_CMD\n")
-    
+    if not line:
+        continue
+
+    sys.stdout.write("GOT:" + line + "\n")
+
+    servo_ids, angle, duration = parse_servo_command(line)
+    if servo_ids is not None:
+        ok, msg = handle_servo_command(servo_ids, angle, duration)
+        sys.stdout.write("SERVO_ACK\n" if ok else "SERVO_ERROR\n")
+    else:
+        display_message("Unknown Cmd", line[:16], "Use: servo 1&2,180,2")
+        sys.stdout.write("UNKNOWN_CMD\n")
+
     time.sleep(0.1)
