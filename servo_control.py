@@ -5,52 +5,64 @@ import re
 
 # Configure serial port
 SERIAL_PORT = '/dev/ttyACM0'
-BAUD_RATE    = 115200
+BAUD_RATE   = 115200
 
-def send_servo_command(servo_spec, angle, duration):
+def open_port():
+    ser = serial.Serial(
+        port=SERIAL_PORT,
+        baudrate=BAUD_RATE,
+        timeout=1,
+        dsrdtr=False    # disable DTR toggling
+    )
+    ser.dtr = False     # definitely hold DTR low
+    time.sleep(2)       # give Pico time to finish any reset
+    return ser
+
+def send_servo_command(ser, servo_spec, angle, duration):
     """
-    servo_spec: int, or list/tuple of ints, or string like "1&2" or "1,4"
-    angle:      0â€“180
-    duration:   seconds (>0)
+    ser: open Serial instance
+    servo_spec: list/tuple of ints, or "1&2" string, or single int
+    angle:      0–180
+    duration:   seconds to hold the position
     """
-    # --- Build a normalized "servo_str" and list of IDs ---
+    # Normalize servo_spec → "1&2&3"
     if isinstance(servo_spec, int):
-        servo_ids = [servo_spec]
-        servo_str = str(servo_spec)
+        nums = [servo_spec]
     elif isinstance(servo_spec, (list, tuple)):
-        servo_ids = servo_spec
-        servo_str = "&".join(str(n) for n in servo_ids)
+        nums = servo_spec
     elif isinstance(servo_spec, str):
-        parts = re.split(r'[&,\s]+', servo_spec.strip())
-        servo_ids = [int(p) for p in parts if p.isdigit()]
-        servo_str = "&".join(str(n) for n in servo_ids)
+        nums = [int(p) for p in re.split(r'[&,\s]+', servo_spec) if p.isdigit()]
     else:
         raise ValueError("servo_spec must be int, list, or string")
 
-    # --- Validate ---
-    if not servo_ids:
-        raise ValueError(f"No valid servo IDs in {servo_spec!r}")
-    if not all(1 <= n <= 4 for n in servo_ids):
-        raise ValueError(f"Servo IDs must be 1â€“4, got {servo_ids}")
+    # Validation
+    if not nums or any(n<1 or n>4 for n in nums):
+        raise ValueError("Servo IDs must be between 1 and 4")
     if not (0 <= angle <= 180):
-        raise ValueError(f"Angle must be 0â€“180, got {angle}")
+        raise ValueError("Angle must be 0–180")
     if duration <= 0:
-        raise ValueError(f"Duration must be >0, got {duration}")
+        raise ValueError("Duration must be >0")
 
-    # --- Construct and send the command ---
+    servo_str = "&".join(str(n) for n in nums)
     cmd = f"servo {servo_str}, {angle} degree, {duration} sec\n"
-    try:
-        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=duration + 1) as ser:
-            time.sleep(0.5)  # give Pico time to wake
-            ser.write(cmd.encode('utf-8'))
-            # Optionally read ack but not required for fire-and-forget:
-            ser.readline()
-    except Exception as e:
-        print("Serial error:", e)
+    ser.write(cmd.encode('utf-8'))
+    # We don't bother reading an ACK – just wait out the move
+    time.sleep(duration + 0.1)
 
+def main():
+    try:
+        ser = open_port()
+
+        # Test #1: move all four to 180° for 2 s
+        send_servo_command(ser, [1,2,3,4], 180, 2)
+
+        # Test #2: move all four to   0° for 2 s
+        send_servo_command(ser, [1,2,3,4],   0, 2)
+
+    except Exception as e:
+        print("ERROR:", e)
+    finally:
+        ser.close()
 
 if __name__ == "__main__":
-    # Test: move servos 1,2,3,4 to 180Â° for 2 seconds
-    send_servo_command([1,2,3,4], 180, 2)
-    # Then move servos 1,2,3,4 to 0Â° for 2 seconds
-    send_servo_command([1,2,3,4], 0, 2)
+    main()
