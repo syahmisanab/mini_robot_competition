@@ -21,7 +21,6 @@ def send_servo_command(servo_spec, angle, duration):
         servo_ids = servo_spec
         servo_str = "&".join(str(n) for n in servo_ids)
     elif isinstance(servo_spec, str):
-        # split on &, comma, whitespace
         parts = re.split(r'[&,\s]+', servo_spec.strip())
         servo_ids = [int(p) for p in parts if p.isdigit()]
         servo_str = "&".join(str(n) for n in servo_ids)
@@ -30,40 +29,28 @@ def send_servo_command(servo_spec, angle, duration):
 
     # --- Validate ---
     if not servo_ids:
-        raise ValueError("No valid servo IDs in %r" % servo_spec)
+        raise ValueError(f"No valid servo IDs in {servo_spec!r}")
     if not all(1 <= n <= 4 for n in servo_ids):
-        raise ValueError("Servo IDs must be 1–4, got %r" % servo_ids)
+        raise ValueError(f"Servo IDs must be 1–4, got {servo_ids}")
     if not (0 <= angle <= 180):
-        raise ValueError("Angle must be 0–180, got %r" % angle)
+        raise ValueError(f"Angle must be 0–180, got {angle}")
     if duration <= 0:
-        raise ValueError("Duration must be >0, got %r" % duration)
+        raise ValueError(f"Duration must be >0, got {duration}")
 
-    # --- Construct the command string ---
-    cmd = f"servo {servo_str}, {angle} degree, {duration} sec"
-    # print(f"[DEBUG] Sending: {cmd}")
-
-    # --- Send over serial ---
+    # --- Construct and send the command ---
+    cmd = f"servo {servo_str}, {angle} degree, {duration} sec\n"
     try:
-        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=3) as ser:
-            time.sleep(0.5)              # give Pico time to wake
-            ser.write((cmd + "\n").encode('utf-8'))
-            response = ser.readline().decode('utf-8').strip()
-            # print(f"[DEBUG] Got response: {response}")
-            return "SERVO_ACK" in response
+        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=duration + 1) as ser:
+            time.sleep(0.5)  # give Pico time to wake
+            ser.write(cmd.encode('utf-8'))
+            # Optionally read ack but not required for fire-and-forget:
+            ser.readline()
     except Exception as e:
         print("Serial error:", e)
-        return False
 
-# Example usage
+
 if __name__ == "__main__":
-    # Move servos 1 and 2 to 180° for 2 s:
-    send_servo_command("1&2", 180, 2)
-    print("1&2 → 180°:", "OK" if ok else "FAIL")
-
-    # Move servos 1 and 4 to 0° for 1 s:
-    send_servo_command([1,4], 0, 1)
-    print("1,4 → 0°:", "OK" if ok else "FAIL")
-
-    # Move servo 3 to 90° for 1.5 s:
-    send_servo_command(3, 90, 1.5)
-    print("3 → 90°:", "OK" if ok else "FAIL")
+    # Test: move servos 1,2,3,4 to 180° for 2 seconds
+    send_servo_command([1,2,3,4], 180, 2)
+    # Then move servos 1,2,3,4 to 0° for 2 seconds
+    send_servo_command([1,2,3,4], 0, 2)
