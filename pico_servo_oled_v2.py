@@ -8,36 +8,30 @@ import ssd1306
 i2c = SoftI2C(sda=Pin(4), scl=Pin(5))
 oled = ssd1306.SSD1306_I2C(128, 64, i2c)
 
-# Initialize 4 Servos on GP0, GP1, GP2, GP3
+# Initialize 4 Servos on GP6, GP7, GP8, GP9
 class Servo:
-    def __init__(self, pin):
+    def __init__(self, pin, min_us=500, max_us=2500):
         self.pwm = PWM(Pin(pin))
-        self.pwm.freq(50)  # 50Hz for servo control
-        self.current_angle = 90  # Track current position
-    
+        self.pwm.freq(50)
+        self.min_us = min_us
+        self.max_us = max_us
+        self.current_angle = 90
+
     def write_angle(self, angle):
-        """Move servo to specific angle (0-180 degrees)"""
-        if angle < 0:
-            angle = 0
-        elif angle > 180:
-            angle = 180
-        
-        # Debug print
-        print(f"Moving servo to {angle} degrees")
-        
-        # Convert angle to duty cycle
-        # Standard servo: 1ms = 0°, 1.5ms = 90°, 2ms = 180°
-        pulse_width = 1 + (angle / 180)  # 1ms to 2ms range
-        duty = int((pulse_width / 20) * 65535)
+        angle = max(0, min(180, angle))
+        # Map 0–180° ? min_us–max_us
+        pulse_us = self.min_us + (angle / 180) * (self.max_us - self.min_us)
+        duty = int((pulse_us / 20000) * 65535)
         self.pwm.duty_u16(duty)
         self.current_angle = angle
 
+
 # Create 4 servos
 servos = [
-    Servo(0),  # Servo 1 on GP0
-    Servo(1),  # Servo 2 on GP1
-    Servo(2),  # Servo 3 on GP2
-    Servo(3)   # Servo 4 on GP3
+    Servo(6),  # Servo 1 on GP0
+    Servo(7),  # Servo 2 on GP1
+    Servo(8),  # Servo 3 on GP2
+    Servo(9)   # Servo 4 on GP3
 ]
 
 # Set all servos to 0 degrees at startup (rest position)
