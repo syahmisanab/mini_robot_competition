@@ -125,6 +125,15 @@ def line_navigator(active_flag, rescue_flag, exit_flag, terminate_flag):
     current_action_text = "Mencari Garisan..." # Default action text for debug display
 
     while True:
+        # Object avoidance using front ultrasonic sensor
+        front_distance = distance_sensor_front.distance * 100
+        if front_distance < 15:
+            print(f"Obstacle detected at {front_distance:.1f}cm! Running corner sequence.")
+            log_event(f"Obstacle detected at {front_distance:.1f}cm, running corner sequence.")
+            run_corner_sequence()
+            time.sleep(0.5)
+            continue # Skip rest of loop this cycle
+
         if terminate_flag.value: # Check for termination signal
             print(f"{current_process().name}: Menerima isyarat penamatan. Menutup...")
             log_event(f"{current_process().name}: Received termination signal. Shutting down gracefully.")
