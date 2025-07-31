@@ -10,7 +10,6 @@ from multiprocessing import current_process # Import for clearer logging
 # Import YOLO from ultralytics for YOLOv8 model
 from ultralytics import YOLO 
 from servo_control import open_port, send_servo_command
-import RPi.GPIO as GPIO
 from gpiozero import DistanceSensor
 from robot_corner import run_corner_sequence
 
@@ -41,16 +40,16 @@ ser = open_port()
 # === Servo Actions (Skeleton) ===
 def grip_ball():
     """Simulates gripping a ball with the servo."""
-    print("🤖 Gripping ball (servo command)")
+    print("ðŸ¤– Gripping ball (servo command)")
     # Grip up the ball sequence
-    send_servo_command(ser, [1], 90, 2)
-    send_servo_command(ser, [2], 90, 2)
-    send_servo_command(ser, [1], 0, 2)
+    send_servo_command(ser, [2], 40, 2)
+    send_servo_command(ser, [2], 40, 2)
+    send_servo_command(ser, [2], 0, 2)
     log_event("Gripped ball")
 
 def release_ball():
     """Simulates releasing a ball with the servo."""
-    print("🖐 Releasing ball (servo command)")
+    print("ðŸ– Releasing ball (servo command)")
     # Release the ball sequence
     send_servo_command(ser, [1], 45, 2)
     send_servo_command(ser, [2], 0, 2)
@@ -93,7 +92,7 @@ def brake():
     print("Brake activated") # Keep this print for critical action
     md.send_data("$upload:0,0,0#")
     md.control_pwm(0, 0, 0, 0)
-    time.sleep(0.05)
+    #time.sleep(0.05)
     md.control_speed(0, 0, 0, 0)
     log_event("Brake activated")
 
@@ -105,12 +104,12 @@ def line_navigator(active_flag, rescue_flag, exit_flag, terminate_flag):
     """
     cap_down = cv2.VideoCapture(0)
     if not cap_down.isOpened():
-        print("❌ Kamera bawah gagal dibuka.")
+        print("âŒ Kamera bawah gagal dibuka.")
         log_event("Error: Downward camera failed to open.")
         return
     time.sleep(2) # Allow camera to warm up
 
-    print("🟢 Line navigator process started")
+    print("ðŸŸ¢ Line navigator process started")
     log_event("Line navigator process started")
 
     U_TURN_DURATION_BOTH = 2.5 # Dikurangkan dari 25.0, ini mungkin terlalu lama. Sesuaikan!
@@ -121,18 +120,17 @@ def line_navigator(active_flag, rescue_flag, exit_flag, terminate_flag):
     # How many frames the line can be missing before robot performs a recovery action
     LOST_LINE_THRESHOLD_FRAMES = 30 
     lost_line_counter = 0 
-
     current_action_text = "Mencari Garisan..." # Default action text for debug display
 
     while True:
         # Object avoidance using front ultrasonic sensor
-        front_distance = distance_sensor_front.distance * 100
-        if front_distance < 15:
-            print(f"Obstacle detected at {front_distance:.1f}cm! Running corner sequence.")
-            log_event(f"Obstacle detected at {front_distance:.1f}cm, running corner sequence.")
-            run_corner_sequence()
-            time.sleep(0.5)
-            continue # Skip rest of loop this cycle
+ #       front_distance = distance_sensor_front.distance * 100
+ #       if front_distance < 15:
+ #          print(f"Obstacle detected at {front_distance:.1f}cm! Running corner sequence.")
+ #          log_event(f"Obstacle detected at {front_distance:.1f}cm, running corner sequence.")
+ #           run_corner_sequence()
+ #          time.sleep(0.5)
+ #          continue # Skip rest of loop this cycle
 
         if terminate_flag.value: # Check for termination signal
             print(f"{current_process().name}: Menerima isyarat penamatan. Menutup...")
@@ -141,7 +139,7 @@ def line_navigator(active_flag, rescue_flag, exit_flag, terminate_flag):
 
         # Check flags to determine current state and if navigation should continue
         if not active_flag.value or rescue_flag.value or exit_flag.value:
-            brake() # Robot akan brek jika proses ini tidak aktif
+            #brake() # Robot akan brek jika proses ini tidak aktif
             current_action_text = "Berhenti (Menunggu)"
             if exit_flag.value: # If exiting, this process should stop
                 print("Line navigator stopping due to exit flag.")
@@ -199,7 +197,7 @@ def line_navigator(active_flag, rescue_flag, exit_flag, terminate_flag):
 
         if cv2.countNonZero(mask_silver) > 500: # Threshold for silver zone presence (adjust as needed)
             current_action_text = "Zon Perak Dikesan! Mengaktifkan Mod Penyelamat..."
-            print("⚪ Silver zone detected! Activating rescue mode.")
+            print("âšª Silver zone detected! Activating rescue mode.")
             log_event("Silver zone detected. Activating rescue mode.")
             
             # DEBUG PRINT: Menunjukkan perubahan bendera
@@ -266,7 +264,7 @@ def line_navigator(active_flag, rescue_flag, exit_flag, terminate_flag):
                     right(200)
             else:
                 current_action_text = "Garisan Hilang Terlalu Lama! Melakukan Pemulihan..."
-                print("❌ Tiada garis dikesan (lama) atau tidak pernah dikesan. Melakukan pemulihan.")
+                print("âŒ Tiada garis dikesan (lama) atau tidak pernah dikesan. Melakukan pemulihan.")
                 backward(200) 
                 time.sleep(0.5) # Dikurangkan dari 0.7
                 brake() 
@@ -290,7 +288,7 @@ def line_navigator(active_flag, rescue_flag, exit_flag, terminate_flag):
                 if M_green["m00"] > 0:
                     cx_green_roi = int(M_green["m10"] / M_green["m00"])
                     green_marker_positions.append(cx_green_roi)
-                    print(f"✅ Marker hijau dikesan pada CX_ROI: {cx_green_roi}, Area: {area}") # Tambah print statement
+                    print(f"âœ… Marker hijau dikesan pada CX_ROI: {cx_green_roi}, Area: {area}") # Tambah print statement
                     
                     x, y, w, h = cv2.boundingRect(cnt)
                     cv2.rectangle(debug_display_frame, (x, y + roi_start_y), (x + w, y + h + roi_start_y), (0, 255, 0), 2) 
@@ -311,7 +309,7 @@ def line_navigator(active_flag, rescue_flag, exit_flag, terminate_flag):
             
             if left_marker_found and right_marker_found:
                 current_action_text = "U-Turn 180 Darjah (Dua Marker Hijau)"
-                print("✅ Kedua-dua marker hijau dikesan - Melakukan U-turn 180 darjah!")
+                print("âœ… Kedua-dua marker hijau dikesan - Melakukan U-turn 180 darjah!")
                 brake()
                 spin_right(U_TURN_SPEED)
                 time.sleep(U_TURN_DURATION_BOTH)
@@ -320,7 +318,7 @@ def line_navigator(active_flag, rescue_flag, exit_flag, terminate_flag):
                 lost_line_counter = 0 
             elif left_marker_found:
                 current_action_text = "Pelarasan Kiri (Marker Hijau Kiri)"
-                print("🟩 Marker hijau dikesan di kiri (tunggal) - melaraskan")
+                print("ðŸŸ© Marker hijau dikesan di kiri (tunggal) - melaraskan")
                 spin_left(U_TURN_SPEED) 
                 time.sleep(0.3) # Dikurangkan dari 0.6
                 brake()
@@ -331,7 +329,7 @@ def line_navigator(active_flag, rescue_flag, exit_flag, terminate_flag):
                 lost_line_counter = 0 
             elif right_marker_found:
                 current_action_text = "Pelarasan Kanan (Marker Hijau Kanan)"
-                print("🟩 Marker hijau dikesan di kanan (tunggal) - melaraskan")
+                print("ðŸŸ© Marker hijau dikesan di kanan (tunggal) - melaraskan")
                 spin_right(U_TURN_SPEED) 
                 time.sleep(0.3) # Dikurangkan dari 0.3 (kekal sama, mungkin perlu dilaraskan)
                 brake()
@@ -386,20 +384,20 @@ def victim_rescuer(rescue_flag, exit_flag, terminate_flag):
     Grips the ball and releases it in a designated green or red zone.
     Transitions to the exit zone process after handling victims or timeout.
     """
-    print("🟠 Victim rescuer process started")
+    print("ðŸŸ  Victim rescuer process started")
     log_event("Victim rescuer process started")
 
     cap_front = cv2.VideoCapture(2)
     if not cap_front.isOpened():
-        print("❌ Kamera depan gagal dibuka.")
+        print("âŒ Kamera depan gagal dibuka.")
         log_event("Error: Front camera failed to open.")
         return
 
     try:
         # Load YOLOv8 model
-        model = YOLO("/home/pi/Desktop/competition/ball_detect_s.pt")
+        model = YOLO("/home/pi/Desktop/competition/best.pt")
     except Exception as e:
-        print(f"❌ Gagal memuat model YOLO: {e}")
+        print(f"âŒ Gagal memuat model YOLO: {e}")
         log_event(f"Error: Failed to load YOLO model: {e}")
         cap_front.release()
         return
@@ -410,6 +408,9 @@ def victim_rescuer(rescue_flag, exit_flag, terminate_flag):
     detection_timeout = 15 # seconds
     last_active_time = time.time()
     current_action = "Menunggu (Zon Perak)" # Ini adalah tindakan awal apabila proses aktif
+
+    holding_ball = False
+    held_ball_label = None
 
     while True:
         if terminate_flag.value: # Check for termination signal
@@ -444,7 +445,7 @@ def victim_rescuer(rescue_flag, exit_flag, terminate_flag):
 
         ret, frame = cap_front.read()
         if not ret:
-            print("❌ Kamera depan gagal membaca frame.")
+            print("âŒ Kamera depan gagal membaca frame.")
             log_event("Error: Front camera failed to read frame.")
             break
 
@@ -482,140 +483,118 @@ def victim_rescuer(rescue_flag, exit_flag, terminate_flag):
                 cv2.putText(frame, f"{label} ({conf:.2f})", (x1, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-        # --- Movement Logic: Follow the Ball (NEW) ---
-        if detected_ball_info:
-            # Prioritize a ball based on proximity (closest to bottom of frame)
-            detected_ball_info.sort(key=lambda x: x[1], reverse=True) # Sort by cy (y-coordinate) descending
-            
-            target_cx, target_cy, target_label, _, _, _, _ = detected_ball_info[0] # Get info of the closest ball
-            
-            center_frame_x = frame.shape[1] // 2 # Center X of the camera frame
-            tolerance_x = 30 # Pixels of tolerance for horizontal centering
-            proximity_y_threshold = frame.shape[0] * 0.7 # Ball is "close" if its center Y is in the bottom 30% of the frame
+        # --- Movement Logic: Only chase ball if not holding one ---
+        if not holding_ball:
+            if detected_ball_info:
+                # Prioritize a ball based on proximity (closest to bottom of frame)
+                detected_ball_info.sort(key=lambda x: x[1], reverse=True) # Sort by cy (y-coordinate) descending
+                
+                target_cx, target_cy, target_label, _, _, _, _ = detected_ball_info[0] # Get info of the closest ball
+                
+                center_frame_x = frame.shape[1] // 2 # Center X of the camera frame
+                tolerance_x = 30 # Pixels of tolerance for horizontal centering
+                proximity_y_threshold = frame.shape[0] * 0.7 # Ball is "close" if its center Y is in the bottom 30% of the frame
 
-            if target_cy > proximity_y_threshold: # Ball is close enough to attempt grip/release
-                current_action = f"Bola Dekat ({target_label}): Bersedia untuk Genggam"
-                brake() # Stop to prepare for gripping
+                if target_cy > proximity_y_threshold: # Ball is close enough to attempt grip/release
+                    current_action = f"Bola Dekat ({target_label}): Bersedia untuk Genggam"
+                    brake() # Stop to prepare for gripping
 
-                # Grip the ball
-                grip_ball()
-                time.sleep(0.5)
+                    # Grip the ball
+                    grip_ball()
+                    time.sleep(0.5)
+                    holding_ball = True
+                    held_ball_label = target_label
 
-                # Move camera to look forward
-                send_servo_command(ser, [1], 45, 2)
-
-                # Zone alignment and drop logic
-                alignment_done = False
-                alignment_attempts = 0
-                max_alignment_attempts = 60
-                zone_close = False
-
-                while not alignment_done and alignment_attempts < max_alignment_attempts:
-                    ret, frame_zone = cap_front.read()
-                    if not ret:
-                        break
-                    frame_hsv_zone = cv2.cvtColor(frame_zone, cv2.COLOR_BGR2HSV)
-                    frame_center_x = frame_zone.shape[1] // 2
-
-                    if target_label == "silver_ball":
-                        mask_zone = cv2.inRange(frame_hsv_zone, HSV_THRESHOLDS["green_zone"][0], HSV_THRESHOLDS["green_zone"][1])
-                        zone_color = "Hijau"
+                    # Move camera to look forward
+                    #send_servo_command(ser, [1], 0, 2)
+                else: # Ball is detected but not close enough, so move towards it
+                    if target_cx < center_frame_x - tolerance_x:
+                        current_action = f"Mengikuti Bola ({target_label}): Belok Kiri"
+                        left(150) # Adjust speed as needed
+                    elif target_cx > center_frame_x + tolerance_x:
+                        current_action = f"Mengikuti Bola ({target_label}): Belok Kanan"
+                        right(150) # Adjust speed as needed
                     else:
-                        mask1 = cv2.inRange(frame_hsv_zone, HSV_THRESHOLDS["red1"][0], HSV_THRESHOLDS["red1"][1])
-                        mask2 = cv2.inRange(frame_hsv_zone, HSV_THRESHOLDS["red2"][0], HSV_THRESHOLDS["red2"][1])
-                        mask_zone = mask1 + mask2
-                        zone_color = "Merah"
+                        current_action = f"Mengikuti Bola ({target_label}): Maju"
+                        forward(100) # Move forward towards the ball
+            else: # No balls detected, search pattern
+                current_action = "Mencari Mangsa..."
+                spin_right(80) # Spin slowly to search for balls
+                # Or forward(50) for slow forward search
+        else:
+            # --- Only look for drop zone, ignore balls ---
+            # Use held_ball_label to determine correct zone
+            if held_ball_label == "silver_ball":
+                mask_zone = cv2.inRange(frame_hsv, HSV_THRESHOLDS["green_zone"][0], HSV_THRESHOLDS["green_zone"][1])
+                zone_color = "Hijau"
+                zone_detected = green_zone_detected
+            else:
+                mask1 = cv2.inRange(frame_hsv, HSV_THRESHOLDS["red1"][0], HSV_THRESHOLDS["red1"][1])
+                mask2 = cv2.inRange(frame_hsv, HSV_THRESHOLDS["red2"][0], HSV_THRESHOLDS["red2"][1])
+                mask_zone = mask1 + mask2
+                zone_color = "Merah"
+                zone_detected = red_zone_detected
 
-                    contours, _ = cv2.findContours(mask_zone, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                    if contours:
-                        largest = max(contours, key=cv2.contourArea)
-                        area = cv2.contourArea(largest)
-                        M = cv2.moments(largest)
-                        if M["m00"] > 0:
-                            cx = int(M["m10"] / M["m00"])
-                            tolerance = 30
-                            area_threshold = 3500 # Adjust as needed
-                            if abs(cx - frame_center_x) > tolerance:
-                                if cx < frame_center_x:
-                                    current_action = f"Zon {zone_color} kiri - Belok Kiri"
-                                    left(100)
-                                else:
-                                    current_action = f"Zon {zone_color} kanan - Belok Kanan"
-                                    right(100)
-                            elif area < area_threshold:
-                                current_action = f"Zon {zone_color} di depan - Bergerak Maju"
-                                forward(120)
-                            else:
-                                current_action = f"Zon {zone_color} dekat & tengah - Siap Lepas Bola"
-                                brake()
-                                zone_close = True
-                                alignment_done = True
+            contours, _ = cv2.findContours(mask_zone, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            frame_center_x = frame.shape[1] // 2
+            alignment_done = False
+            zone_close = False
+
+            if contours:
+                largest = max(contours, key=cv2.contourArea)
+                area = cv2.contourArea(largest)
+                M = cv2.moments(largest)
+                if M["m00"] > 0:
+                    cx = int(M["m10"] / M["m00"])
+                    tolerance = 30
+                    area_threshold = 3500 # Adjust as needed
+                    if abs(cx - frame_center_x) > tolerance:
+                        if cx < frame_center_x:
+                            current_action = f"Zon {zone_color} kiri - Belok Kiri"
+                            left(100)
                         else:
-                            current_action = f"Mencari Zon {zone_color} (kontur tiada m00)"
-                            spin_right(80)
+                            current_action = f"Zon {zone_color} kanan - Belok Kanan"
+                            right(100)
+                    elif area < area_threshold:
+                        current_action = f"Zon {zone_color} di depan - Bergerak Maju"
+                        forward(120)
                     else:
-                        current_action = f"Mencari Zon {zone_color} (tiada kontur)"
-                        spin_right(80)
-
-                    frame_disp = frame_zone.copy()
-                    cv2.putText(frame_disp, current_action, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,255), 2)
-                    cv2.imshow("Zone Alignment", frame_disp)
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        break
-                    alignment_attempts += 1
-                    time.sleep(0.05)
-
-                # Release ball if zone is close and centered
-                if zone_close:
-                    # Ultrasonic check before releasing (gpiozero)
-                    wall_confirmed = False
-                    for _ in range(3):
-                        dist = distance_sensor_wall.distance * 100
-                        print(f"Ultrasonic distance (wall): {dist:.1f} cm")
-                        if dist > 2 and dist < 20:
-                            wall_confirmed = True
-                            break
-                        time.sleep(0.1)
-                    if wall_confirmed:
-                        release_ball()
-                        log_event(f"Released {target_label} in {zone_color} zone (wall confirmed, {dist:.1f}cm).")
-                        rescue_flag.value = False
-                        exit_flag.value = True
-                        victim_handled = True
-                        print(f"Ball released in {zone_color} zone, wall confirmed, proceeding to exit.")
-                        break
-                    else:
-                        print("Wall not detected by ultrasonic sensor, not releasing ball.")
-                        current_action = "Wall not detected, retrying alignment."
-            else: # Ball is detected but not close enough, so move towards it
-                if target_cx < center_frame_x - tolerance_x:
-                    current_action = f"Mengikuti Bola ({target_label}): Belok Kiri"
-                    left(150) # Adjust speed as needed
-                elif target_cx > center_frame_x + tolerance_x:
-                    current_action = f"Mengikuti Bola ({target_label}): Belok Kanan"
-                    right(150) # Adjust speed as needed
+                        current_action = f"Zon {zone_color} dekat & tengah - Siap Lepas Bola"
+                        brake()
+                        zone_close = True
+                        alignment_done = True
                 else:
-                    current_action = f"Mengikuti Bola ({target_label}): Maju"
-                    forward(100) # Move forward towards the ball
-        else: # No balls detected, search pattern
-            current_action = "Mencari Mangsa..."
-            spin_right(80) # Spin slowly to search for balls
-            # Or forward(50) for slow forward search
-            
-        # If a victim was handled, reset timeout and prepare to exit rescue mode
-        if victim_handled:
-            last_active_time = time.time() # Reset timeout
-            print("✅ Victim handled. Continuing search or proceeding to exit zone.")
-            current_action = "Mangsa Dikendalikan"
-            # For now, we assume one victim then exit rescue mode
-            print(f"DEBUG (victim_rescuer): Menetapkan rescue_flag = False, exit_flag = True")
-            rescue_flag.value = False # Deactivate victim rescue mode
-            exit_flag.value = True    # Activate exit zone mode
-            break # Exit victim rescuer loop
-        elif len(results.boxes) == 0: # Check if no objects were detected by YOLO
-            # This condition is already handled by the 'else' block above for movement
-            pass # No specific action needed here beyond what the movement logic does
-        
+                    current_action = f"Mencari Zon {zone_color} (kontur tiada m00)"
+                    spin_right(80)
+            else:
+                current_action = f"Mencari Zon {zone_color} (tiada kontur)"
+                spin_right(80)
+
+            # Release ball if zone is close and centered
+            if zone_close:
+                # Ultrasonic check before releasing (gpiozero)
+                wall_confirmed = False
+                for _ in range(3):
+                    dist = distance_sensor_wall.distance * 100
+                    print(f"Ultrasonic distance (wall): {dist:.1f} cm")
+                    if dist > 2 and dist < 20:
+                        wall_confirmed = True
+                        break
+                    time.sleep(0.1)
+                if wall_confirmed:
+                    release_ball()
+                    log_event(f"Released {held_ball_label} in {zone_color} zone (wall confirmed, {dist:.1f}cm).")
+                    rescue_flag.value = False
+                    exit_flag.value = True
+                    victim_handled = True
+                    holding_ball = False
+                    held_ball_label = None
+                    print(f"Ball released in {zone_color} zone, wall confirmed, proceeding to exit.")
+                    break
+                else:
+                    print("Wall not detected by ultrasonic sensor, not releasing ball.")
+                    current_action = "Wall not detected, retrying alignment."
+
         # --- Debug View ---
         frame_display = frame.copy() # Use the frame with YOLO overlays for display
         
@@ -651,12 +630,12 @@ def zone_exiter(exit_flag, active_flag, terminate_flag):
     Manages the robot's exit from the rescue zone.
     It looks for the black line to resume normal navigation or a red line to stop.
     """
-    print("🔵 Zone exiter process started")
+    print("ðŸ”µ Zone exiter process started")
     log_event("Zone exiter process started")
 
-    cap_down = cv2.VideoCapture(2)
+    cap_down = cv2.VideoCapture(1)
     if not cap_down.isOpened():
-        print("❌ Kamera bawah gagal dibuka untuk zone exiter.")
+        print("âŒ Kamera bawah gagal dibuka untuk zone exiter.")
         log_event("Error: Downward camera failed to open for zone exiter.")
         return
     time.sleep(2) # Allow camera to warm up
@@ -690,7 +669,7 @@ def zone_exiter(exit_flag, active_flag, terminate_flag):
 
         ret, frame = cap_down.read()
         if not ret:
-            print("❌ Kamera bawah gagal membaca frame di zone exiter.")
+            print("âŒ Kamera bawah gagal membaca frame di zone exiter.")
             log_event("Error: Downward camera failed to read frame in zone exiter.")
             break
 
@@ -703,8 +682,8 @@ def zone_exiter(exit_flag, active_flag, terminate_flag):
         mask_black = cv2.inRange(hsv, lower_black, upper_black)
         if cv2.countNonZero(mask_black) > 500: # Threshold for black line presence
             forward(180) # Move forward to fully clear the silver zone
-            current_action = "Garisan Hitam Dikesan → Sambung Navigasi"
-            print("⬛ Found black line again → Resuming navigation")
+            current_action = "Garisan Hitam Dikesan â†’ Sambung Navigasi"
+            print("â¬› Found black line again â†’ Resuming navigation")
             log_event("Black line re-detected. Resuming navigation.")
             active_flag.value = True # Reactivate line navigation
             exit_flag.value = False # Deactivate exit process
@@ -718,8 +697,8 @@ def zone_exiter(exit_flag, active_flag, terminate_flag):
         mask_red = mask_red1 + mask_red2
 
         if cv2.countNonZero(mask_red) > 500: # Threshold for red line presence
-            current_action = "Garisan Merah Dikesan → BERHENTI"
-            print("🔴 Red line found → STOPPING ALL OPERATIONS")
+            current_action = "Garisan Merah Dikesan â†’ BERHENTI"
+            print("ðŸ”´ Red line found â†’ STOPPING ALL OPERATIONS")
             log_event("Red line detected. Stopping all operations.")
             brake()
             active_flag.value = False # Stop line navigation
@@ -773,10 +752,11 @@ if __name__ == "__main__":
     # === Ultrasonic Sensor Setup (gpiozero) ===
     # Wall sensor (for drop zone confirmation)
     distance_sensor_wall = DistanceSensor(echo=27, trigger=17, max_distance=2.0)
+    distance_sensor_front = DistanceSensor(echo=23, trigger=24, max_distance=2.0)    
     # Front sensor (for obstacle detection during line follow)
-    distance_sensor_front = DistanceSensor(echo=24, trigger=23, max_distance=2.0)
 
-    print("🚀 Starting robot control system...")
+
+    print("ðŸš€ Starting robot control system...")
     log_event("Robot control system started.")
 
     # Create and start processes
@@ -793,10 +773,10 @@ if __name__ == "__main__":
         p1.join()
         p2.join()
         p3.join()
-        print("✅ Semua proses telah selesai.")
+        print("âœ… Semua proses telah selesai.")
         log_event("All processes completed successfully.")
     except KeyboardInterrupt:
-        print("🔴 Dihentikan oleh pengguna. Menghentikan semua proses secara berhemah.")
+        print("ðŸ”´ Dihentikan oleh pengguna. Menghentikan semua proses secara berhemah.")
         log_event("Robot control system interrupted by user. Initiating graceful shutdown.")
         terminate_flag.value = True # Signal processes to terminate gracefully
         # Give some time for processes to clean up before joining with timeout
