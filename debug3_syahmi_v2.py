@@ -544,6 +544,12 @@ def victim_rescuer(rescue_flag, exit_flag, terminate_flag):
                 largest = max(contours, key=cv2.contourArea)
                 area = cv2.contourArea(largest)
                 M = cv2.moments(largest)
+                # --- Draw bounding box for drop zone ---
+                x, y, w, h = cv2.boundingRect(largest)
+                color_box = (0,255,0) if zone_color == "Hijau" else (0,0,255)
+                cv2.rectangle(frame_display, (x, y), (x+w, y+h), color_box, 2)
+                cv2.putText(frame_display, f"Drop Zone ({zone_color})", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color_box, 2)
+                # --- End bounding box ---
                 if M["m00"] > 0:
                     cx = int(M["m10"] / M["m00"])
                     tolerance = 30
@@ -603,7 +609,6 @@ def victim_rescuer(rescue_flag, exit_flag, terminate_flag):
             cv2.putText(frame_display, "Zon Hijau Dikesan", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         if red_zone_detected:
             cv2.putText(frame_display, "Zon Merah Dikesan", (10, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-
         # Tambah teks status pada paparan debug
         cv2.putText(frame_display, f"Status: {('AKTIF' if rescue_flag.value else 'TIDAK AKTIF')}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0) if rescue_flag.value else (0, 0, 255), 2)
         cv2.putText(frame_display, f"Bola Perak Dikesan: {num_silver_balls}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
