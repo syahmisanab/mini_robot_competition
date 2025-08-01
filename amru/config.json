@@ -1,0 +1,52 @@
+{
+    "CAMERA_PATH_DOWN": "/dev/video0",
+    "CAMERA_PATH_FRONT": "/dev/video2",
+    "YOLO_MODEL_PATH": "/home/pi/Competition_robocup/models/best.pt",
+    "LOGS_DIR": "logs",
+
+    "HSV_THRESHOLDS": {
+        "black": [ [0, 0, 0], [180, 255, 50] ],
+        "line_follow_black": [ [0, 0, 0], [179, 255, 76] ],
+        "green": [ [35, 50, 50], [85, 255, 255] ],
+        "silver": [ [0, 0, 100], [180, 30, 255] ]
+    },
+
+    "MOTOR_COMMUNICATION_PARAMS": {
+        "PORT": "/dev/ttyUSB0",    
+        "BAUDRATE": 115200,        
+        "MOTOR_TYPE": 2,           
+        "UPLOAD_DATA": 1           
+    },
+
+    "PID_GAINS": {
+        "Kp": 0.015,
+        "Ki": 0.0001,
+        "Kd": 0.008
+    },
+
+    "LINE_FOLLOW_BASE_SPEED": 0.5,
+    "MAX_TURN_POWER": 0.5,
+    "SEARCH_LINE_SPEED": 0.1,
+
+    "VICTIM_CONFIDENCE_THRESHOLD": 0.7,
+    "MAX_VICTIMS_TO_RESCUE": 3,
+    "SEARCH_SPEED": 0.1,
+    "RESCUE_BACK_SPEED": 0.2,
+    "RESCUE_BACK_DURATION": 1.0,
+
+    "EXIT_ZONE_SPEED": 0.3,
+    "EXIT_ZONE_DURATION": 2.0,
+    "GREEN_ZONE_MIN_AREA": 15000,
+    "SILVER_ZONE_MIN_AREA": 10000,
+
+    "YOLO_DETECTION_INTERVAL": 0.5,
+
+    "ROBOT_STATES": {
+        "IDLE": 0,
+        "LINE_FOLLOWING": 1,
+        "VICTIM_RESCUE": 2,
+        "ZONE_EXIT": 3,
+        "FINISHED": 4,
+        "ERROR": 5
+    }
+}
